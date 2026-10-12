@@ -1,0 +1,301 @@
+<style>
+:root{--bg:#fff;--fg:#1b1b1f;--muted:#6b6f76;--faint:#9a9ea6;--line:#ececee;--hover:#f4f4f6;--soft:#f7f7f8;--accent:#5e6ad2;--track:#f1f1f3}
+:root[data-theme=dark]{--bg:#0d0d0f;--fg:#ececee;--muted:#9a9ea6;--faint:#6b6f76;--line:#232327;--hover:#1a1a1e;--soft:#141417;--track:#1c1c20}
+*{box-sizing:border-box}html,body,#app{margin:0;height:100%}
+body{font:13px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+:root[data-surface=banner] body{background:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit;background:transparent;border:0;outline:none}
+svg{display:block;flex:none}
+#app{display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.tab{padding:3px 9px;border-radius:6px;color:var(--muted);font-weight:500}.tab:hover{background:var(--hover);color:var(--fg)}.tab.on{background:var(--soft);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line)}
+.sp{flex:1}
+.primary{background:var(--accent);color:#fff;border-radius:6px;padding:4px 11px;font-weight:500}.primary:disabled{opacity:.45;cursor:default}
+.ghost{border:1px solid var(--line);border-radius:6px;padding:3px 9px;color:var(--muted)}.ghost:hover{background:var(--hover);color:var(--fg)}
+.scroll{flex:1;overflow-y:auto}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.poll{padding:14px 14px 12px;border-bottom:1px solid var(--line)}
+.poll h3{margin:0;font-size:14px;font-weight:600;line-height:1.35}
+.meta{display:flex;align-items:center;gap:6px;margin:3px 0 10px;color:var(--faint);font-size:11px}
+.pill{border-radius:999px;padding:0 7px;font-size:10px;font-weight:600;line-height:16px}
+.pill.open{background:color-mix(in srgb,#10b981 16%,transparent);color:#10b981}.pill.closed{background:var(--soft);color:var(--muted)}
+.opt{position:relative;display:flex;align-items:center;gap:9px;width:100%;margin-bottom:6px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;text-align:left}
+.opt:hover:not(:disabled){border-color:var(--c)}.opt:disabled{cursor:default}
+.opt.mine{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 16%,transparent)}
+.fill{position:absolute;inset:0;width:0;background:color-mix(in srgb,var(--c) 14%,transparent);transition:width .25s}
+.check{position:relative;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--c);display:flex;align-items:center;justify-content:center}
+.check.multi{border-radius:4px}
+.mine .check{background:var(--c)}
+.label{position:relative;flex:1;min-width:0;font-weight:500}
+.count{position:relative;font-weight:600;color:var(--c);font-variant-numeric:tabular-nums}
+.pct{position:relative;color:var(--faint);font-size:11px;width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.voters{position:relative;display:flex;margin-left:2px}
+.av{width:18px;height:18px;border-radius:50%;margin-left:-5px;border:2px solid var(--bg);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:600}
+.foot{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--faint);font-size:11px}
+.form{padding:14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line);background:var(--soft)}
+.field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;background:var(--bg)}
+.field input{flex:1;min-width:0}
+.field .x{color:var(--faint)}
+.row{display:flex;align-items:center;gap:8px}
+.toggle{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.toggle input{width:auto;accent-color:var(--accent)}
+#flash{position:fixed;left:10px;right:10px;bottom:10px;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 10px;font-size:12px}
+.banner{display:flex;align-items:center;gap:12px;height:100%;padding:0 2px;white-space:nowrap;overflow:hidden;font-size:12px}
+.banner b{font-weight:600;max-width:40%;overflow:hidden;text-overflow:ellipsis}
+.banner .stat{display:flex;align-items:center;gap:5px;color:var(--muted)}.banner .stat i{width:8px;height:8px;border-radius:50%}
+.banner .stat strong{color:var(--fg)}
+</style>
+<div id="app"></div><div id="flash" hidden></div>
+<script>
+const COLORS = ["#5e6ad2", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#0ea5e9", "#ec4899", "#14b8a6"];
+const MAX_OPTIONS = 8;
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ptr = (...parts) => "/" + parts.map((p) => String(p).replace(/~/g, "~0").replace(/\//g, "~1")).join("/");
+let ctx = null;
+let snap = { revision: 0, state: { next: 1, polls: {} } };
+let view = { filter: "open", composing: false };
+let draft = { question: "", options: ["", ""], multi: false };
+
+const member = (slug) => (ctx && ctx.members.find((m) => m.slug === slug)) || null;
+const nameOf = (slug) => (member(slug) && member(slug).name) || slug;
+const colorOf = (slug) => (member(slug) && member(slug).color) || "#9a9ea6";
+const avatar = (slug) => `<span class="av" style="background:${colorOf(slug)}" title="${esc(nameOf(slug))}">${esc(nameOf(slug).trim().charAt(0).toUpperCase())}</span>`;
+const polls = () => Object.values(snap.state.polls || {}).sort((a, b) => Number(!!a.closed) - Number(!!b.closed) || b.created_at - a.created_at);
+const ballots = (p) => p.votes || {};
+const voters = (p, optionId) => Object.keys(ballots(p)).filter((s) => (ballots(p)[s] || []).includes(optionId));
+const turnout = (p) => Object.keys(ballots(p)).filter((s) => (ballots(p)[s] || []).length).length;
+const leader = (p) => {
+  let best = null;
+  for (const o of p.options) {
+    const n = voters(p, o.id).length;
+    if (n && (!best || n > best.n)) best = { o, n, tie: false };
+    else if (best && n === best.n) best.tie = true;
+  }
+  return best;
+};
+
+function flash(text) {
+  const el = document.getElementById("flash");
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => (el.hidden = true), 3500);
+}
+
+let queue = Promise.resolve();
+const waiters = [];
+function caughtUp(revision) {
+  if (snap.revision >= revision) return Promise.resolve();
+  return new Promise((resolve) => {
+    waiters.push({ revision, resolve });
+    setTimeout(resolve, 3000);
+  });
+}
+function write(build) {
+  const run = queue.then(async () => {
+    const plan = build();
+    if (!plan) return false;
+    try {
+      const out = await huddo.submit(plan.ops, { expectedRevision: snap.revision, announce: plan.announce });
+      if (out.announced === false && out.announce_error) flash("Saved. " + out.announce_error);
+      await caughtUp(out.revision);
+      return true;
+    } catch (err) {
+      flash(err.code === "REVISION_CONFLICT" ? "Someone voted at the same time. Showing the latest." : err.message);
+      snap = await huddo.getState();
+      render();
+      return false;
+    }
+  });
+  queue = run.catch(() => false);
+  return run;
+}
+
+function createPoll() {
+  const question = draft.question.trim();
+  const labels = draft.options.map((o) => o.trim()).filter(Boolean);
+  if (!question || labels.length < 2) return;
+  return write(() => {
+    const n = snap.state.next || 1;
+    const id = "P" + n;
+    const poll = {
+      id,
+      question,
+      options: labels.map((label, i) => ({ id: "o" + (i + 1), label })),
+      multi: draft.multi,
+      closed: false,
+      created_by: ctx.self.slug,
+      created_at: Date.now(),
+      votes: {},
+    };
+    return {
+      ops: [{ op: "test", path: "/next", value: snap.state.next ?? null }, { op: "add", path: "/next", value: n + 1 }, { op: "add", path: ptr("polls", id), value: poll }],
+      announce: `started a poll: ${question} (${labels.join(" / ")})`,
+    };
+  }).then((ok) => {
+    if (ok) {
+      draft = { question: "", options: ["", ""], multi: false };
+      view = { ...view, composing: false, filter: "open" };
+      render();
+    }
+  });
+}
+
+function vote(pollId, optionId) {
+  return write(() => {
+    const p = snap.state.polls[pollId];
+    if (!p || p.closed) return null;
+    const mine = ballots(p)[ctx.self.slug] || [];
+    let next;
+    if (p.multi) next = mine.includes(optionId) ? mine.filter((x) => x !== optionId) : [...mine, optionId];
+    else next = mine.includes(optionId) ? [] : [optionId];
+    const labels = next.map((id) => p.options.find((o) => o.id === id).label);
+    const announce = next.length ? `voted ${labels.join(" + ")} in "${p.question}"` : `withdrew their vote in "${p.question}"`;
+    return { ops: [{ op: "add", path: ptr("polls", pollId, "votes", ctx.self.slug), value: next }], announce };
+  });
+}
+
+function closePoll(pollId) {
+  return write(() => {
+    const p = snap.state.polls[pollId];
+    if (!p || p.closed) return null;
+    const best = leader(p);
+    const result = !best ? "no votes" : best.tie ? "a tie" : `${best.o.label} won with ${best.n}`;
+    return { ops: [{ op: "add", path: ptr("polls", pollId, "closed"), value: true }, { op: "add", path: ptr("polls", pollId, "closed_at"), value: Date.now() }], announce: `closed the poll "${p.question}": ${result}` };
+  });
+}
+
+function renderBanner() {
+  const open = polls().filter((p) => !p.closed);
+  const app = document.getElementById("app");
+  if (!open.length) {
+    app.innerHTML = `<div class="banner"><b>Votes</b><span class="stat">No open polls</span></div>`;
+    return;
+  }
+  const p = open[0];
+  const stats = p.options
+    .slice(0, 4)
+    .map((o, i) => `<span class="stat"><i style="background:${COLORS[i % COLORS.length]}"></i>${esc(o.label)} <strong>${voters(p, o.id).length}</strong></span>`)
+    .join("");
+  const more = open.length > 1 ? `<span class="stat">+${open.length - 1} more open</span>` : "";
+  app.innerHTML = `<div class="banner"><b>${esc(p.question)}</b>${stats}<span class="stat">${turnout(p)} voted</span>${more}</div>`;
+}
+
+function pollHtml(p) {
+  const mine = ballots(p)[ctx.self.slug] || [];
+  const total = turnout(p);
+  const maxCount = Math.max(1, ...p.options.map((o) => voters(p, o.id).length));
+  const opts = p.options
+    .map((o, i) => {
+      const who = voters(p, o.id);
+      const pct = total ? Math.round((who.length / total) * 100) : 0;
+      const c = COLORS[i % COLORS.length];
+      const tick = mine.includes(o.id) ? `<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5.2l2 2 4-4.4" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>` : "";
+      return `<button class="opt ${mine.includes(o.id) ? "mine" : ""}" style="--c:${c}" data-vote="${esc(p.id)}" data-opt="${esc(o.id)}" ${p.closed ? "disabled" : ""}>
+        <span class="fill" style="width:${(who.length / maxCount) * 100}%"></span>
+        <span class="check ${p.multi ? "multi" : ""}">${tick}</span>
+        <span class="label">${esc(o.label)}</span>
+        <span class="voters">${who.slice(0, 5).map(avatar).join("")}</span>
+        <span class="count">${who.length}</span><span class="pct">${pct}%</span>
+      </button>`;
+    })
+    .join("");
+  const best = p.closed ? leader(p) : null;
+  const result = p.closed ? (!best ? "No votes" : best.tie ? "Tie" : `${esc(best.o.label)} won`) : "";
+  const canClose = !p.closed && p.created_by === ctx.self.slug;
+  return `<div class="poll" data-poll="${esc(p.id)}">
+    <h3>${esc(p.question)}</h3>
+    <div class="meta"><span class="pill ${p.closed ? "closed" : "open"}">${p.closed ? "Closed" : "Open"}</span>${esc(p.id)} · by ${esc(nameOf(p.created_by))} · ${p.multi ? "pick any" : "pick one"}</div>
+    ${opts}
+    <div class="foot"><span>${total} voted${result ? " · " + result : ""}</span><span class="sp"></span>${canClose ? `<button class="ghost" data-close="${esc(p.id)}">Close poll</button>` : ""}</div>
+  </div>`;
+}
+
+function formHtml() {
+  const rows = draft.options
+    .map((o, i) => `<div class="field"><span style="width:8px;height:8px;border-radius:50%;background:${COLORS[i % COLORS.length]}"></span><input data-option="${i}" placeholder="Option ${i + 1}" maxlength="80" value="${esc(o)}">${draft.options.length > 2 ? `<button class="x" data-remove="${i}" title="Remove">✕</button>` : ""}</div>`)
+    .join("");
+  const ready = draft.question.trim() && draft.options.filter((o) => o.trim()).length >= 2;
+  return `<div class="form">
+    <div class="field"><input id="question" placeholder="Ask a question" maxlength="160" value="${esc(draft.question)}"></div>
+    ${rows}
+    <div class="row">
+      ${draft.options.length < MAX_OPTIONS ? `<button class="ghost" data-add-option>+ Option</button>` : ""}
+      <label class="toggle"><input type="checkbox" id="multi" ${draft.multi ? "checked" : ""}>Allow picking several</label>
+      <span class="sp"></span>
+      <button class="ghost" data-cancel>Cancel</button>
+      <button class="primary" data-create ${ready ? "" : "disabled"}>Start poll</button>
+    </div>
+  </div>`;
+}
+
+function render() {
+  if (!ctx) return;
+  if (document.documentElement.dataset.surface === "banner") return renderBanner();
+  const active = document.activeElement;
+  const focused = active && active.id ? "#" + active.id : active && active.dataset && active.dataset.option !== undefined ? `[data-option="${active.dataset.option}"]` : null;
+  paint();
+  const again = focused && document.querySelector(focused);
+  if (again) {
+    again.focus();
+    if (typeof again.value === "string") again.setSelectionRange(again.value.length, again.value.length);
+  }
+}
+
+function paint() {
+  const app = document.getElementById("app");
+  const list = polls().filter((p) => (view.filter === "open" ? !p.closed : view.filter === "closed" ? p.closed : true));
+  const tab = (k, label) => `<button class="tab ${view.filter === k ? "on" : ""}" data-filter="${k}">${label}</button>`;
+  app.innerHTML =
+    `<div class="bar">${tab("open", "Open")}${tab("closed", "Closed")}${tab("all", "All")}<span class="sp"></span>${view.composing ? "" : `<button class="primary" data-compose>New poll</button>`}</div>` +
+    (view.composing ? formHtml() : "") +
+    `<div class="scroll">${list.length ? list.map(pollHtml).join("") : `<div class="empty">${view.filter === "closed" ? "No closed polls yet." : "No polls yet. Start one with New poll."}</div>`}</div>`;
+  app.querySelectorAll("[data-filter]").forEach((b) => (b.onclick = () => { view.filter = b.dataset.filter; huddo.view.set("filter", view.filter); render(); }));
+  const compose = app.querySelector("[data-compose]");
+  if (compose) compose.onclick = () => { view.composing = true; render(); app.querySelector("#question").focus(); };
+  app.querySelectorAll("[data-vote]").forEach((b) => (b.onclick = () => vote(b.dataset.vote, b.dataset.opt)));
+  app.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => closePoll(b.dataset.close)));
+  if (!view.composing) return;
+  const sync = () => {
+    const button = app.querySelector("[data-create]");
+    button.disabled = !(draft.question.trim() && draft.options.filter((o) => o.trim()).length >= 2);
+  };
+  const q = app.querySelector("#question");
+  q.oninput = () => { draft.question = q.value; sync(); };
+  app.querySelectorAll("[data-option]").forEach((input) => {
+    input.oninput = () => { draft.options[Number(input.dataset.option)] = input.value; sync(); };
+    input.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      const i = Number(input.dataset.option);
+      if (i === draft.options.length - 1 && draft.options.length < MAX_OPTIONS && input.value.trim()) {
+        draft.options.push("");
+        render();
+        app.querySelector(`[data-option="${i + 1}"]`).focus();
+      } else createPoll();
+    };
+  });
+  app.querySelectorAll("[data-remove]").forEach((b) => (b.onclick = () => { draft.options.splice(Number(b.dataset.remove), 1); render(); }));
+  const add = app.querySelector("[data-add-option]");
+  if (add) add.onclick = () => { draft.options.push(""); render(); app.querySelector(`[data-option="${draft.options.length - 1}"]`).focus(); };
+  app.querySelector("#multi").onchange = (e) => (draft.multi = e.target.checked);
+  app.querySelector("[data-cancel]").onclick = () => { view.composing = false; render(); };
+  app.querySelector("[data-create]").onclick = createPoll;
+}
+
+huddo.ready.then(async (c) => {
+  ctx = c;
+  huddo.onContext(() => render());
+  huddo.onState((s) => {
+    snap = s;
+    for (let i = waiters.length - 1; i >= 0; i -= 1) if (waiters[i].revision <= s.revision) waiters.splice(i, 1)[0].resolve();
+    render();
+  });
+  if (document.documentElement.dataset.surface !== "banner") {
+    const saved = await huddo.view.get("filter");
+    if (saved) view.filter = saved;
+  }
+  snap = await huddo.getState();
+  render();
+});
+</script>

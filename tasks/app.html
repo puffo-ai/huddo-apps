@@ -1,0 +1,301 @@
+<style>
+:root{--bg:#fff;--fg:#1b1b1f;--muted:#6b6f76;--faint:#9a9ea6;--line:#ececee;--hover:#f4f4f6;--soft:#f7f7f8;--accent:#5e6ad2;--todo:#b0b3b9;--doing:#f2c94c;--done:#5e6ad2;--urgent:#eb5757;--high:#f2994a;--chip:#eef0fb}
+:root[data-theme=dark]{--bg:#0d0d0f;--fg:#ececee;--muted:#9a9ea6;--faint:#6b6f76;--line:#232327;--hover:#1a1a1e;--soft:#141417;--chip:#22253a}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font:13px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit;background:transparent;border:0;outline:none}
+svg{display:block;flex:none}
+#app{display:flex;flex-direction:column;height:100%}
+.bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.tab{padding:3px 9px;border-radius:6px;color:var(--muted);font-weight:500}.tab:hover{background:var(--hover);color:var(--fg)}.tab.on{background:var(--soft);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line)}
+.sp{flex:1}.icon-btn{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;color:var(--muted)}.icon-btn:hover{background:var(--hover);color:var(--fg)}
+.new{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}.new input{flex:1;padding:4px 0}
+.primary{background:var(--accent);color:#fff;border-radius:6px;padding:3px 10px;font-weight:500}.primary:disabled{opacity:.5}
+.scroll{flex:1;overflow-y:auto}
+.group{display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;background:var(--soft);border-bottom:1px solid var(--line);font-weight:500;position:sticky;top:0;z-index:1}
+.group .n{color:var(--faint);font-weight:400}
+.row{display:flex;align-items:center;gap:9px;height:38px;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer}.row:hover{background:var(--hover)}
+.id{color:var(--faint);font-size:12px;width:30px;flex:none;font-variant-numeric:tabular-nums}
+.title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.done .title{color:var(--muted)}
+.av{width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:600}
+.av.none{border:1px dashed var(--faint);background:none}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.board{display:flex;gap:10px;padding:10px 12px;overflow-x:auto;height:100%}
+.col{flex:0 0 220px;display:flex;flex-direction:column;gap:6px}
+.col h4{display:flex;align-items:center;gap:7px;margin:2px 2px 4px;font-size:12px;font-weight:500}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;box-shadow:0 1px 1px rgba(0,0,0,.03)}.card:hover{border-color:var(--faint)}
+.card .top{display:flex;align-items:center;gap:6px;color:var(--faint);font-size:11px;margin-bottom:4px}
+.card .foot{display:flex;align-items:center;gap:6px;margin-top:8px}
+.detail{padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+.back{display:flex;align-items:center;gap:4px;color:var(--muted)}.back:hover{color:var(--fg)}
+.dtitle{font-size:17px;font-weight:600;width:100%;padding:2px 0}
+.props{display:grid;grid-template-columns:84px 1fr;gap:6px 10px;align-items:center}
+.props label{color:var(--muted)}
+.pick{display:flex;flex-wrap:wrap;gap:4px}
+.chip{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;border:1px solid var(--line)}.chip:hover{background:var(--hover)}.chip.on{background:var(--chip);border-color:transparent}
+.notes h5{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:500}
+.note{display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--line)}.note .who{font-weight:500}.note .when{color:var(--faint);font-size:11px;margin-left:6px}
+.compose{display:flex;gap:8px;align-items:flex-end;border:1px solid var(--line);border-radius:8px;padding:8px}.compose textarea{flex:1;resize:none;min-height:20px;max-height:120px}
+#flash{position:fixed;left:10px;right:10px;bottom:10px;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 10px;font-size:12px}
+/* banner */
+.banner{display:flex;align-items:center;gap:14px;height:100%;padding:0 2px;white-space:nowrap;overflow:hidden;font-size:12px}
+.banner b{font-weight:600}.banner .stat{display:flex;align-items:center;gap:5px;color:var(--muted)}.banner .stat strong{color:var(--fg);font-weight:600}
+:root[data-surface=banner] body{background:transparent}
+</style>
+<div id="app"></div><div id="flash" hidden></div>
+<script>
+const STATUS = {
+  TODO: { label: "Todo", color: "var(--todo)" },
+  IN_PROGRESS: { label: "In Progress", color: "var(--doing)" },
+  DONE: { label: "Done", color: "var(--done)" },
+};
+const ORDER = ["IN_PROGRESS", "TODO", "DONE"];
+const PRIORITY = [
+  { v: 0, label: "No priority" },
+  { v: 1, label: "Urgent" },
+  { v: 2, label: "High" },
+  { v: 3, label: "Medium" },
+  { v: 4, label: "Low" },
+];
+const PALETTE = ["#5e6ad2", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ptr = (id) => "/tasks/" + id.replace(/~/g, "~0").replace(/\//g, "~1");
+let ctx = null;
+let snap = { revision: 0, state: { next: 1, tasks: {} } };
+let view = { layout: "list", filter: "all", open: null };
+let draft = "";
+let noteDraft = "";
+
+function statusIcon(status, size = 14) {
+  const c = (STATUS[status] || STATUS.TODO).color;
+  if (status === "DONE")
+    return `<svg width="${size}" height="${size}" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="${c}"/><path d="M4.2 7.2l1.9 1.9 3.7-3.9" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  if (status === "IN_PROGRESS")
+    return `<svg width="${size}" height="${size}" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="${c}" stroke-width="1.5"/><path d="M7 3.5a3.5 3.5 0 0 1 0 7z" fill="${c}"/></svg>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="${c}" stroke-width="1.5"/></svg>`;
+}
+function priorityIcon(p) {
+  if (p === 1) return `<svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" rx="3" fill="var(--urgent)"/><path d="M7 3.8v4M7 9.6v.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+  if (!p) return `<svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 7h1.5M6.25 7h1.5M9.5 7H11" stroke="var(--faint)" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+  const on = 5 - p;
+  return `<svg width="14" height="14" viewBox="0 0 14 14">${[0, 1, 2].map((i) => `<rect x="${2 + i * 4}" y="${9 - i * 3}" width="2.6" height="${3 + i * 3}" rx=".8" fill="${i < on ? (p === 2 ? "var(--high)" : "var(--muted)") : "var(--line)"}"/>`).join("")}</svg>`;
+}
+const member = (slug) => (ctx && ctx.members.find((m) => m.slug === slug)) || null;
+const nameOf = (slug) => (member(slug) && member(slug).name) || slug;
+function color(slug) {
+  if (member(slug) && member(slug).color) return member(slug).color;
+  let h = 0;
+  for (const ch of slug) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+function avatar(slug, size = 20) {
+  if (!slug) return `<span class="av none" style="width:${size}px;height:${size}px" title="Unassigned"></span>`;
+  return `<span class="av" style="width:${size}px;height:${size}px;background:${color(slug)}" title="${esc(nameOf(slug))}">${esc(nameOf(slug).trim().charAt(0).toUpperCase())}</span>`;
+}
+const tasks = () => Object.values(snap.state.tasks || {}).sort((a, b) => (a.priority || 9) - (b.priority || 9) || Number(b.id.slice(1)) - Number(a.id.slice(1)));
+const ago = (t) => {
+  const s = Math.max(1, Math.round((Date.now() - t) / 1000));
+  return s < 60 ? "now" : s < 3600 ? Math.round(s / 60) + "m" : s < 86400 ? Math.round(s / 3600) + "h" : Math.round(s / 86400) + "d";
+};
+function flash(text) {
+  const el = document.getElementById("flash");
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => (el.hidden = true), 3500);
+}
+function stamp(id) {
+  return [
+    { op: "add", path: ptr(id) + "/updated_by", value: ctx.self.slug },
+    { op: "add", path: ptr(id) + "/updated_at", value: Date.now() },
+  ];
+}
+let queue = Promise.resolve();
+const waiters = [];
+function caughtUp(revision) {
+  if (snap.revision >= revision) return Promise.resolve();
+  return new Promise((resolve) => {
+    waiters.push({ revision, resolve });
+    setTimeout(resolve, 3000);
+  });
+}
+function write(build) {
+  const run = queue.then(async () => {
+    const { ops, announce } = build();
+    try {
+      const out = await huddo.submit(ops, { expectedRevision: snap.revision, announce });
+      if (announce && out.announced === false && out.announce_error) flash("Saved. " + out.announce_error);
+      await caughtUp(out.revision);
+      return true;
+    } catch (err) {
+      flash(err.code === "REVISION_CONFLICT" ? "Someone changed this first. Showing the latest." : err.message);
+      snap = await huddo.getState();
+      render();
+      return false;
+    }
+  });
+  queue = run.catch(() => false);
+  return run;
+}
+function create(title) {
+  title = title.trim();
+  if (!title) return;
+  return write(() => {
+    const n = snap.state.next || 1;
+    const id = "T" + n;
+    const now = Date.now();
+    const task = { id, title, body: "", status: "TODO", priority: 0, assignee: null, created_by: ctx.self.slug, created_at: now, updated_by: ctx.self.slug, updated_at: now, notes: [] };
+    return { ops: [{ op: "test", path: "/next", value: snap.state.next ?? null }, { op: "add", path: "/next", value: n + 1 }, { op: "add", path: ptr(id), value: task }], announce: `created ${id} ${title}` };
+  });
+}
+function setField(t, field, value, announce) {
+  return write(() => ({ ops: [{ op: "add", path: ptr(t.id) + "/" + field, value }, ...stamp(t.id)], announce }));
+}
+function addNote(t, text) {
+  text = text.trim();
+  if (!text) return;
+  return write(() => ({ ops: [{ op: "add", path: ptr(t.id) + "/notes/-", value: { by: ctx.self.slug, at: Date.now(), text } }, ...stamp(t.id)], announce: `commented on ${t.id}: ${text.slice(0, 120)}` }));
+}
+const setView = (patch) => {
+  view = { ...view, ...patch };
+  huddo.view.set("v", { layout: view.layout, filter: view.filter });
+  render();
+};
+const visible = () => tasks().filter((t) => view.filter === "all" || (view.filter === "mine" ? t.assignee === ctx.self.slug : t.status !== "DONE"));
+
+function renderBanner() {
+  const all = tasks();
+  const count = (s) => all.filter((t) => t.status === s).length;
+  const mine = all.filter((t) => t.assignee === ctx.self.slug && t.status !== "DONE").length;
+  document.getElementById("app").innerHTML =
+    `<div class="banner"><b>Tasks</b>` +
+    ["TODO", "IN_PROGRESS", "DONE"].map((s) => `<span class="stat">${statusIcon(s, 12)}<strong>${count(s)}</strong> ${STATUS[s].label.toLowerCase()}</span>`).join("") +
+    (mine ? `<span class="stat">${avatar(ctx.self.slug, 14)}<strong>${mine}</strong> on you</span>` : "") +
+    `</div>`;
+}
+function bar() {
+  const tab = (k, label) => `<button class="tab ${view.filter === k ? "on" : ""}" data-filter="${k}">${label}</button>`;
+  const layoutIcon =
+    view.layout === "list"
+      ? `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="3.5" height="11" rx="1"/><rect x="6.25" y="2.5" width="3.5" height="7" rx="1"/><rect x="10.5" y="2.5" width="3.5" height="9" rx="1"/></svg>`
+      : `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>`;
+  return `<div class="bar">${tab("all", "All")}${tab("active", "Active")}${tab("mine", "My tasks")}<span class="sp"></span><button class="icon-btn" data-layout title="${view.layout === "list" ? "Board" : "List"} view">${layoutIcon}</button></div>
+  <div class="new"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--faint)" stroke-width="1.5" stroke-linecap="round"><path d="M7 2.5v9M2.5 7h9"/></svg><input id="new" placeholder="New task title, then Enter" maxlength="200" value="${esc(draft)}"><button class="primary" id="add">Create</button></div>`;
+}
+function rowHtml(t) {
+  return `<div class="row ${t.status === "DONE" ? "done" : ""}" data-open="${esc(t.id)}">${priorityIcon(t.priority || 0)}<span class="id">${esc(t.id)}</span>${statusIcon(t.status)}<span class="title">${esc(t.title)}</span>${t.notes.length ? `<span style="color:var(--faint);font-size:11px">${t.notes.length}</span>` : ""}${avatar(t.assignee)}</div>`;
+}
+function listHtml() {
+  const list = visible();
+  if (!list.length) return `<div class="empty">No tasks here yet.</div>`;
+  return ORDER.map((s) => {
+    const g = list.filter((t) => t.status === s);
+    if (!g.length) return "";
+    return `<div class="group">${statusIcon(s)}${STATUS[s].label}<span class="n">${g.length}</span></div>` + g.map(rowHtml).join("");
+  }).join("");
+}
+function boardHtml() {
+  const list = visible();
+  return `<div class="board">${["TODO", "IN_PROGRESS", "DONE"].map((s) => {
+    const g = list.filter((t) => t.status === s);
+    return `<div class="col"><h4>${statusIcon(s)}${STATUS[s].label}<span style="color:var(--faint);font-weight:400">${g.length}</span></h4>${g.map((t) => `<div class="card" data-open="${esc(t.id)}"><div class="top">${priorityIcon(t.priority || 0)}${esc(t.id)}</div><div>${esc(t.title)}</div><div class="foot">${avatar(t.assignee, 18)}<span class="sp"></span>${t.notes.length ? `<span style="color:var(--faint);font-size:11px">${t.notes.length} comments</span>` : ""}</div></div>`).join("")}</div>`;
+  }).join("")}</div>`;
+}
+function detailHtml(t) {
+  const statusChips = ["TODO", "IN_PROGRESS", "DONE"].map((s) => `<button class="chip ${t.status === s ? "on" : ""}" data-status="${s}">${statusIcon(s)}${STATUS[s].label}</button>`).join("");
+  const prioChips = PRIORITY.map((p) => `<button class="chip ${(t.priority || 0) === p.v ? "on" : ""}" data-priority="${p.v}">${priorityIcon(p.v)}${p.label}</button>`).join("");
+  const people = [{ slug: null, name: "Unassigned" }, ...ctx.members];
+  const assignChips = people.map((m) => `<button class="chip ${t.assignee === m.slug ? "on" : ""}" data-assign="${esc(m.slug ?? "")}">${avatar(m.slug, 16)}${esc(m.slug ? nameOf(m.slug) : "Unassigned")}</button>`).join("");
+  return `<div class="detail">
+    <button class="back" data-back><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></svg>All tasks</button>
+    <div style="color:var(--faint);font-size:12px">${esc(t.id)} · opened by ${esc(nameOf(t.created_by))} ${ago(t.created_at)} ago</div>
+    <input class="dtitle" id="dtitle" value="${esc(t.title)}" maxlength="200">
+    <div class="props">
+      <label>Status</label><div class="pick">${statusChips}</div>
+      <label>Priority</label><div class="pick">${prioChips}</div>
+      <label>Assignee</label><div class="pick">${assignChips}</div>
+    </div>
+    <div class="notes"><h5>Activity</h5>
+      ${t.notes.map((n) => `<div class="note">${avatar(n.by)}<div><span class="who">${esc(nameOf(n.by))}</span><span class="when">${ago(n.at)} ago</span><div>${esc(n.text)}</div></div></div>`).join("") || `<div style="color:var(--faint)">No comments yet.</div>`}
+      <div class="compose" style="margin-top:10px"><textarea id="note" rows="1" placeholder="Leave a comment" maxlength="500"></textarea><button class="primary" id="send">Comment</button></div>
+    </div>
+  </div>`;
+}
+function render() {
+  if (!ctx) return;
+  if (document.documentElement.dataset.surface === "banner") return renderBanner();
+  const active = document.activeElement;
+  const focused = active && active.id;
+  const value = active && typeof active.value === "string" ? active.value : null;
+  paint();
+  const again = focused && document.getElementById(focused);
+  if (again) {
+    if (value !== null) again.value = value;
+    again.focus();
+    if (typeof again.value === "string") again.setSelectionRange(again.value.length, again.value.length);
+  }
+}
+function paint() {
+  const app = document.getElementById("app");
+  const t = view.open && snap.state.tasks && snap.state.tasks[view.open];
+  if (t) {
+    app.innerHTML = `<div class="scroll">${detailHtml(t)}</div>`;
+    app.querySelector("[data-back]").onclick = () => setView({ open: null });
+    app.querySelectorAll("[data-status]").forEach((b) => (b.onclick = () => b.dataset.status !== t.status && setField(t, "status", b.dataset.status, `moved ${t.id} ${t.title} to ${STATUS[b.dataset.status].label}`)));
+    app.querySelectorAll("[data-priority]").forEach((b) => {
+      b.onclick = () => {
+        const p = PRIORITY.find((x) => x.v === Number(b.dataset.priority));
+        if (p.v !== (t.priority || 0)) setField(t, "priority", p.v, `set ${t.id} ${t.title} to ${p.label.toLowerCase()} priority`);
+      };
+    });
+    app.querySelectorAll("[data-assign]").forEach((b) => {
+      b.onclick = () => {
+        const slug = b.dataset.assign || null;
+        if (slug === t.assignee) return;
+        setField(t, "assignee", slug, slug ? `assigned ${t.id} ${t.title} to @${slug}` : `unassigned ${t.id} ${t.title}`);
+      };
+    });
+    const title = app.querySelector("#dtitle");
+    title.onkeydown = (e) => e.key === "Enter" && title.blur();
+    title.onblur = () => title.value.trim() && title.value.trim() !== t.title && setField(t, "title", title.value.trim(), `renamed ${t.id} to ${title.value.trim()}`);
+    const note = app.querySelector("#note");
+    note.value = noteDraft;
+    note.oninput = () => (noteDraft = note.value);
+    const send = () => { addNote(t, note.value); note.value = ""; noteDraft = ""; };
+    app.querySelector("#send").onclick = send;
+    note.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
+    return;
+  }
+  app.innerHTML = bar() + `<div class="scroll">${view.layout === "board" ? boardHtml() : listHtml()}</div>`;
+  app.querySelectorAll("[data-filter]").forEach((b) => (b.onclick = () => setView({ filter: b.dataset.filter })));
+  app.querySelector("[data-layout]").onclick = () => setView({ layout: view.layout === "list" ? "board" : "list" });
+  app.querySelectorAll("[data-open]").forEach((r) => (r.onclick = () => setView({ open: r.dataset.open })));
+  const input = app.querySelector("#new");
+  input.oninput = () => (draft = input.value);
+  const go = async () => {
+    const v = input.value;
+    draft = "";
+    input.value = "";
+    if (!(await create(v))) draft = v;
+  };
+  app.querySelector("#add").onclick = go;
+  input.onkeydown = (e) => e.key === "Enter" && go();
+}
+huddo.ready.then(async (c) => {
+  ctx = c;
+  huddo.onContext(() => render());
+  huddo.onState((s) => {
+    snap = s;
+    for (let i = waiters.length - 1; i >= 0; i -= 1) if (waiters[i].revision <= s.revision) waiters.splice(i, 1)[0].resolve();
+    render();
+  });
+  if (document.documentElement.dataset.surface !== "banner") {
+    const saved = await huddo.view.get("v");
+    if (saved) view = { ...view, ...saved };
+  }
+  snap = await huddo.getState();
+  render();
+});
+</script>

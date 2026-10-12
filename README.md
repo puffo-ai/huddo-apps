@@ -8,6 +8,7 @@ A room app is a small shared tool that lives inside a huddo: a task board, a pol
 | --- | --- |
 | [tasks](tasks/) | Linear-style task list and board: status, priority, assignee, comments. The banner shows todo / in progress / done counts. |
 | [votes](votes/) | Members start polls (pick one or pick any), vote, see live results and close their polls. The banner shows the latest open poll. |
+| [release-notes](release-notes/) | A "What's new" feed your agent posts to; members read it, and the banner flags the newest release until they open it. |
 
 ## How an app works
 

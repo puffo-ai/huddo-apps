@@ -1,0 +1,90 @@
+<style>
+:root{--bg:#fff;--fg:#1b1b1f;--muted:#6b6f76;--faint:#9a9ea6;--line:#ececee;--hover:#f4f4f6;--soft:#f7f7f8;--accent:#5e6ad2;--new:#10b981;--improved:#3b82f6;--fixed:#f59e0b}
+:root[data-theme=dark]{--bg:#0d0d0f;--fg:#ececee;--muted:#9a9ea6;--faint:#6b6f76;--line:#232327;--hover:#1a1a1e;--soft:#141417}
+*{box-sizing:border-box}html,body,#app{margin:0;height:100%}
+body{font:13px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+:root[data-surface=banner] body{background:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+#app{display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.tab{padding:3px 9px;border-radius:6px;color:var(--muted);font-weight:500}.tab:hover{background:var(--hover);color:var(--fg)}.tab.on{background:var(--soft);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line)}
+.sp{flex:1}
+.scroll{flex:1;overflow-y:auto}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.rel{position:relative;padding:16px 16px 14px 30px;border-bottom:1px solid var(--line)}
+.rel::before{content:"";position:absolute;left:15px;top:0;bottom:0;width:1px;background:var(--line)}
+.dot{position:absolute;left:11px;top:21px;width:9px;height:9px;border-radius:50%;background:var(--bg);border:2px solid var(--faint)}
+.rel.latest .dot{border-color:var(--accent);background:var(--accent)}
+.head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ver{font-weight:700;font-size:12px;padding:1px 8px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
+.date{color:var(--faint);font-size:12px}
+.unseen{font-size:10px;font-weight:700;padding:0 6px;border-radius:999px;background:var(--accent);color:#fff;line-height:16px}
+h3{margin:6px 0 2px;font-size:15px;line-height:1.35}
+.summary{color:var(--muted);margin:0 0 8px}
+ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+li{display:flex;gap:8px;align-items:flex-start}
+.kind{flex:none;font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;width:60px;padding-top:2px}
+.kind.new{color:var(--new)}.kind.improved{color:var(--improved)}.kind.fixed{color:var(--fixed)}
+.banner{display:flex;align-items:center;gap:8px;height:100%;padding:0 2px;white-space:nowrap;overflow:hidden;font-size:12px}
+.banner b{font-weight:600}.banner .t{color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+</style>
+<div id="app"></div>
+<script>
+const KINDS = { new: "New", improved: "Improved", fixed: "Fixed" };
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const day = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+let ctx = null;
+let snap = { revision: 0, state: { releases: {} } };
+let filter = "all";
+let seen = 0;
+
+const releases = () => Object.values(snap.state.releases || {}).sort((a, b) => (b.date || 0) - (a.date || 0) || String(b.id).localeCompare(String(a.id)));
+const latest = () => releases()[0];
+
+function renderBanner() {
+  const r = latest();
+  const app = document.getElementById("app");
+  if (!r) {
+    app.innerHTML = `<div class="banner"><b>What's new</b><span class="t">No release notes yet</span></div>`;
+    return;
+  }
+  app.innerHTML = `<div class="banner"><span class="ver">${esc(r.version)}</span><b>${esc(r.title)}</b><span class="t">${esc(day(r.date))}</span>${(r.date || 0) > seen ? `<span class="unseen">NEW</span>` : ""}</div>`;
+}
+
+function relHtml(r, i) {
+  const items = (r.items || []).filter((it) => filter === "all" || it.kind === filter);
+  if (filter !== "all" && !items.length) return "";
+  return `<div class="rel ${i === 0 ? "latest" : ""}" data-release="${esc(r.id)}">
+    <span class="dot"></span>
+    <div class="head"><span class="ver">${esc(r.version)}</span><span class="date">${esc(day(r.date))}</span>${(r.date || 0) > seen ? `<span class="unseen">NEW</span>` : ""}</div>
+    <h3>${esc(r.title)}</h3>
+    ${r.summary ? `<p class="summary">${esc(r.summary)}</p>` : ""}
+    <ul>${items.map((it) => `<li><span class="kind ${esc(it.kind)}">${esc(KINDS[it.kind] || it.kind)}</span><span>${esc(it.text)}</span></li>`).join("")}</ul>
+  </div>`;
+}
+
+function render() {
+  if (!ctx) return;
+  if (document.documentElement.dataset.surface === "banner") return renderBanner();
+  const list = releases();
+  const tab = (k, label) => `<button class="tab ${filter === k ? "on" : ""}" data-filter="${k}">${label}</button>`;
+  const body = list.map(relHtml).join("");
+  document.getElementById("app").innerHTML =
+    `<div class="bar">${tab("all", "All")}${tab("new", "New")}${tab("improved", "Improved")}${tab("fixed", "Fixed")}</div>` +
+    `<div class="scroll">${body || `<div class="empty">${list.length ? "Nothing in this category yet." : "No release notes yet."}</div>`}</div>`;
+  document.querySelectorAll("[data-filter]").forEach((b) => (b.onclick = () => { filter = b.dataset.filter; render(); }));
+  const newest = latest();
+  if (newest && (newest.date || 0) > seen) {
+    huddo.view.set("seen", newest.date || 0);
+  }
+}
+
+huddo.ready.then(async (c) => {
+  ctx = c;
+  huddo.onContext(() => render());
+  huddo.onState((s) => { snap = s; render(); });
+  seen = Number(await huddo.view.get("seen")) || 0;
+  snap = await huddo.getState();
+  render();
+});
+</script>

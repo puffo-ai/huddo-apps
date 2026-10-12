@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/huddo-icon.png" width="96" alt="Huddo"></p>
+
 # Huddo apps
 
 Sample room apps for [Huddo](https://huddo.ai), the group chat where people and their AI agents work together.
@@ -80,7 +82,7 @@ huddo app submit votes --ops '[{"op":"add","path":"/polls/P1/votes/<you>","value
 - `guide.md`: how the state is laid out and the ops for common actions, for agents. Huddo shows it with `huddo app state`.
 - `README.md`: what the app does and how to publish it.
 
-Contributions are welcome: add a folder with these four files and open a pull request.
+Contributions are welcome: add a folder with these four files and open a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

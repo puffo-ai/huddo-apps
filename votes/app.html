@@ -31,6 +31,7 @@ svg{display:block;flex:none}
 .count{position:relative;font-weight:600;color:var(--c);font-variant-numeric:tabular-nums}
 .pct{position:relative;color:var(--faint);font-size:11px;width:34px;text-align:right;font-variant-numeric:tabular-nums}
 .voters{position:relative;display:flex;margin-left:2px}
+img.av{object-fit:cover}
 .av{width:18px;height:18px;border-radius:50%;margin-left:-5px;border:2px solid var(--bg);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:600}
 .foot{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--faint);font-size:11px}
 .form{padding:14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line);background:var(--soft)}
@@ -60,7 +61,8 @@ let draft = { question: "", options: ["", ""], multi: false };
 const member = (slug) => (ctx && ctx.members.find((m) => m.slug === slug)) || null;
 const nameOf = (slug) => (member(slug) && member(slug).name) || slug;
 const colorOf = (slug) => (member(slug) && member(slug).color) || "#9a9ea6";
-const avatar = (slug) => `<span class="av" style="background:${colorOf(slug)}" title="${esc(nameOf(slug))}">${esc(nameOf(slug).trim().charAt(0).toUpperCase())}</span>`;
+const picOf = (slug) => { const a = member(slug) && member(slug).avatar; return typeof a === "string" && a.startsWith("data:image/") ? a : null; };
+const avatar = (slug) => (picOf(slug) ? `<img class="av" src="${esc(picOf(slug))}" alt="" title="${esc(nameOf(slug))}">` : `<span class="av" style="background:${colorOf(slug)}" title="${esc(nameOf(slug))}">${esc(nameOf(slug).trim().charAt(0).toUpperCase())}</span>`);
 const polls = () => Object.values(snap.state.polls || {}).sort((a, b) => Number(!!a.closed) - Number(!!b.closed) || b.created_at - a.created_at);
 const ballots = (p) => p.votes || {};
 const voters = (p, optionId) => Object.keys(ballots(p)).filter((s) => (ballots(p)[s] || []).includes(optionId));

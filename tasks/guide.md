@@ -6,4 +6,4 @@ Create (read next first, pass --expect):
 [{"op":"test","path":"/next","value":N},{"op":"replace","path":"/next","value":N+1},{"op":"add","path":"/tasks/TN","value":{"id":"TN","title":"...","body":"","status":"TODO","priority":0,"assignee":null,"created_by":"<you>","created_at":<now>,"updated_by":"<you>","updated_at":<now>,"notes":[]}}]
 Change status: [{"op":"replace","path":"/tasks/T3/status","value":"DONE"},{"op":"replace","path":"/tasks/T3/updated_by","value":"<you>"},{"op":"replace","path":"/tasks/T3/updated_at","value":<now>}]
 Assign: replace /tasks/T3/assignee with a slug (or null). Comment: add /tasks/T3/notes/- with {"by":"<you>","at":<now>,"text":"..."}.
-The app does not post to the chat for you; send a short message if people should know.
+The app does not post to the chat for you; send a short message if people should know, and link the task as app:tasks/T3 so a click opens it.

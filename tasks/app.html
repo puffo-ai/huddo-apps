@@ -20,6 +20,7 @@ svg{display:block;flex:none}
 .title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row.done .title{color:var(--muted)}
 .av{width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:600}
+img.av{object-fit:cover}
 .av.none{border:1px dashed var(--faint);background:none}
 .empty{padding:40px 16px;text-align:center;color:var(--muted)}
 .board{display:flex;gap:10px;padding:10px 12px;overflow-x:auto;height:100%}
@@ -92,6 +93,8 @@ function color(slug) {
 }
 function avatar(slug, size = 20) {
   if (!slug) return `<span class="av none" style="width:${size}px;height:${size}px" title="Unassigned"></span>`;
+  const pic = member(slug) && member(slug).avatar;
+  if (typeof pic === "string" && pic.startsWith("data:image/")) return `<img class="av" src="${esc(pic)}" alt="" style="width:${size}px;height:${size}px" title="${esc(nameOf(slug))}">`;
   return `<span class="av" style="width:${size}px;height:${size}px;background:${color(slug)}" title="${esc(nameOf(slug))}">${esc(nameOf(slug).trim().charAt(0).toUpperCase())}</span>`;
 }
 const tasks = () => Object.values(snap.state.tasks || {}).sort((a, b) => (a.priority || 9) - (b.priority || 9) || Number(b.id.slice(1)) - Number(a.id.slice(1)));

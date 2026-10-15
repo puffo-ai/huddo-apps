@@ -24,7 +24,7 @@ img.av{object-fit:cover}
 .av.none{border:1px dashed var(--faint);background:none}
 .empty{padding:40px 16px;text-align:center;color:var(--muted)}
 .board{display:flex;gap:10px;padding:10px 12px;overflow-x:auto;height:100%}
-.col{flex:0 0 220px;display:flex;flex-direction:column;gap:6px}
+.col{flex:1 1 0;min-width:120px;display:flex;flex-direction:column;gap:6px}
 .col h4{display:flex;align-items:center;gap:7px;margin:2px 2px 4px;font-size:12px;font-weight:500}
 .card{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;box-shadow:0 1px 1px rgba(0,0,0,.03)}.card:hover{border-color:var(--faint)}
 .card .top{display:flex;align-items:center;gap:6px;color:var(--faint);font-size:11px;margin-bottom:4px}
@@ -39,6 +39,13 @@ textarea.dbody-edit{width:100%;min-height:90px;resize:vertical;border:1px solid 
 .props{display:grid;grid-template-columns:84px 1fr;gap:6px 10px;align-items:center}
 .props label{color:var(--muted)}
 .pick{display:flex;flex-wrap:wrap;gap:4px}
+.dd{position:relative;justify-self:start}
+.dd-btn{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;border:1px solid transparent}.dd-btn:hover,.dd-btn.on{background:var(--hover);border-color:var(--line)}
+.menu{position:absolute;z-index:5;top:calc(100% + 4px);left:0;min-width:190px;max-height:260px;overflow-y:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:4px}
+.opt{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border-radius:6px;text-align:left}.opt:hover{background:var(--hover)}
+.opt .ck{margin-left:auto;color:var(--accent)}
+.col.drop{background:var(--soft);border-radius:8px;outline:1px dashed var(--faint)}
+.card.dragging{opacity:.45}
 .chip{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;border:1px solid var(--line)}.chip:hover{background:var(--hover)}.chip.on{background:var(--chip);border-color:transparent}
 .notes h5{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:500}
 .note{display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--line)}.note .who{font-weight:500}.note .when{color:var(--faint);font-size:11px;margin-left:6px}
@@ -73,6 +80,14 @@ let view = { layout: "list", filter: "all", open: null };
 let draft = "";
 let noteDraft = "";
 let editingBody = null;
+let openMenu = null;
+const CHECK = `<svg class="ck" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2l2.3 2.3 4.7-5"/></svg>`;
+function dropdown(name, current, options) {
+  const menu = openMenu === name
+    ? `<div class="menu" role="menu">${options.map((o) => `<button class="opt" role="menuitem" ${o.attr}>${o.html}${o.on ? CHECK : ""}</button>`).join("")}</div>`
+    : "";
+  return `<div class="dd"><button class="dd-btn ${openMenu === name ? "on" : ""}" data-menu="${name}" aria-haspopup="menu" aria-expanded="${openMenu === name}">${current}</button>${menu}</div>`;
+}
 const BODY_MAX = 4000;
 const URL_RE = /https?:\/\/[^\s<>"']+/g;
 function linkify(text) {
@@ -224,14 +239,18 @@ function boardHtml() {
   const list = visible();
   return `<div class="board">${["TODO", "IN_PROGRESS", "DONE"].map((s) => {
     const g = list.filter((t) => t.status === s);
-    return `<div class="col"><h4>${statusIcon(s)}${STATUS[s].label}<span style="color:var(--faint);font-weight:400">${g.length}</span></h4>${g.map((t) => `<div class="card" data-open="${esc(t.id)}"><div class="top">${priorityIcon(t.priority || 0)}${esc(t.id)}</div><div>${esc(t.title)}</div><div class="foot">${avatar(t.assignee, 18)}<span class="sp"></span>${t.notes.length ? `<span style="color:var(--faint);font-size:11px">${t.notes.length} comments</span>` : ""}</div></div>`).join("")}</div>`;
+    return `<div class="col" data-col="${s}"><h4>${statusIcon(s)}${STATUS[s].label}<span style="color:var(--faint);font-weight:400">${g.length}</span></h4>${g.map((t) => `<div class="card" draggable="true" data-drag="${esc(t.id)}" data-open="${esc(t.id)}"><div class="top">${priorityIcon(t.priority || 0)}${esc(t.id)}</div><div>${esc(t.title)}</div><div class="foot">${avatar(t.assignee, 18)}<span class="sp"></span>${t.notes.length ? `<span style="color:var(--faint);font-size:11px">${t.notes.length} comments</span>` : ""}</div></div>`).join("")}</div>`;
   }).join("")}</div>`;
 }
 function detailHtml(t) {
-  const statusChips = ["TODO", "IN_PROGRESS", "DONE"].map((s) => `<button class="chip ${t.status === s ? "on" : ""}" data-status="${s}">${statusIcon(s)}${STATUS[s].label}</button>`).join("");
-  const prioChips = PRIORITY.map((p) => `<button class="chip ${(t.priority || 0) === p.v ? "on" : ""}" data-priority="${p.v}">${priorityIcon(p.v)}${p.label}</button>`).join("");
+  const prio = PRIORITY.find((p) => p.v === (t.priority || 0)) || PRIORITY[0];
+  const statusChips = dropdown("status", `${statusIcon(t.status)}${STATUS[t.status].label}`,
+    ["TODO", "IN_PROGRESS", "DONE"].map((s) => ({ attr: `data-status="${s}"`, html: `${statusIcon(s)}${STATUS[s].label}`, on: t.status === s })));
+  const prioChips = dropdown("priority", `${priorityIcon(prio.v)}${prio.label}`,
+    PRIORITY.map((p) => ({ attr: `data-priority="${p.v}"`, html: `${priorityIcon(p.v)}${p.label}`, on: prio.v === p.v })));
   const people = [{ slug: null, name: "Unassigned" }, ...ctx.members];
-  const assignChips = people.map((m) => `<button class="chip ${t.assignee === m.slug ? "on" : ""}" data-assign="${esc(m.slug ?? "")}">${avatar(m.slug, 16)}${esc(m.slug ? nameOf(m.slug) : "Unassigned")}</button>`).join("");
+  const assignChips = dropdown("assign", `${avatar(t.assignee, 16)}${esc(t.assignee ? nameOf(t.assignee) : "Unassigned")}`,
+    people.map((m) => ({ attr: `data-assign="${esc(m.slug ?? "")}"`, html: `${avatar(m.slug, 16)}${esc(m.slug ? nameOf(m.slug) : "Unassigned")}`, on: t.assignee === m.slug })));
   return `<div class="detail">
     <button class="back" data-back><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></svg>All tasks</button>
     <div style="color:var(--faint);font-size:12px">${esc(t.id)} · opened by ${esc(nameOf(t.created_by))} ${ago(t.created_at)} ago</div>
@@ -240,9 +259,9 @@ function detailHtml(t) {
       ? `<textarea class="dbody-edit" id="dbody" maxlength="${BODY_MAX}" placeholder="Add a description, links, steps…">${esc(t.body || "")}</textarea>`
       : `<div class="dbody ${t.body ? "" : "empty"}" data-edit-body title="Click to edit">${t.body ? linkify(t.body) : "Add a description…"}</div>`}
     <div class="props">
-      <label>Status</label><div class="pick">${statusChips}</div>
-      <label>Priority</label><div class="pick">${prioChips}</div>
-      <label>Assignee</label><div class="pick">${assignChips}</div>
+      <label>Status</label>${statusChips}
+      <label>Priority</label>${prioChips}
+      <label>Assignee</label>${assignChips}
     </div>
     <div class="notes"><h5>Activity</h5>
       ${t.notes.map((n) => `<div class="note">${avatar(n.by)}<div><span class="who">${esc(nameOf(n.by))}</span><span class="when">${ago(n.at)} ago</span><div>${esc(n.text)}</div></div></div>`).join("") || `<div style="color:var(--faint)">No comments yet.</div>`}
@@ -269,7 +288,9 @@ function paint() {
   const t = view.open && snap.state.tasks && snap.state.tasks[view.open];
   if (t) {
     app.innerHTML = `<div class="scroll">${detailHtml(t)}</div>`;
-    app.querySelector("[data-back]").onclick = () => setView({ open: null });
+    app.querySelector("[data-back]").onclick = () => { openMenu = null; setView({ open: null }); };
+    app.querySelectorAll("[data-menu]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); openMenu = openMenu === b.dataset.menu ? null : b.dataset.menu; render(); }));
+    app.querySelectorAll(".opt").forEach((o) => o.addEventListener("click", () => { openMenu = null; render(); }));
     app.querySelectorAll("[data-status]").forEach((b) => (b.onclick = () => b.dataset.status !== t.status && setField(t, "status", b.dataset.status, `moved ${t.id} ${t.title} to ${STATUS[b.dataset.status].label}`)));
     app.querySelectorAll("[data-priority]").forEach((b) => {
       b.onclick = () => {
@@ -315,6 +336,25 @@ function paint() {
   app.querySelectorAll("[data-filter]").forEach((b) => (b.onclick = () => setView({ filter: b.dataset.filter })));
   app.querySelector("[data-layout]").onclick = () => setView({ layout: view.layout === "list" ? "board" : "list" });
   app.querySelectorAll("[data-open]").forEach((r) => (r.onclick = () => setView({ open: r.dataset.open })));
+  app.querySelectorAll("[data-drag]").forEach((card) => {
+    card.ondragstart = (e) => {
+      e.dataTransfer.setData("text/plain", card.dataset.drag);
+      e.dataTransfer.effectAllowed = "move";
+      card.classList.add("dragging");
+    };
+    card.ondragend = () => card.classList.remove("dragging");
+  });
+  app.querySelectorAll("[data-col]").forEach((col) => {
+    col.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; col.classList.add("drop"); };
+    col.ondragleave = (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("drop"); };
+    col.ondrop = (e) => {
+      e.preventDefault();
+      col.classList.remove("drop");
+      const t = snap.state.tasks && snap.state.tasks[e.dataTransfer.getData("text/plain")];
+      const s = col.dataset.col;
+      if (t && t.status !== s) setField(t, "status", s, `moved ${t.id} ${t.title} to ${STATUS[s].label}`);
+    };
+  });
   const input = app.querySelector("#new");
   input.oninput = () => (draft = input.value);
   const go = async () => {
@@ -326,6 +366,8 @@ function paint() {
   app.querySelector("#add").onclick = go;
   input.onkeydown = (e) => e.key === "Enter" && go();
 }
+document.addEventListener("click", () => { if (openMenu) { openMenu = null; render(); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && openMenu) { openMenu = null; render(); } });
 huddo.ready.then(async (c) => {
   ctx = c;
   huddo.onContext(() => render());

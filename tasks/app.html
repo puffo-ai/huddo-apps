@@ -44,7 +44,8 @@ textarea.dbody-edit{width:100%;min-height:90px;resize:vertical;border:1px solid 
 .menu{position:absolute;z-index:5;top:calc(100% + 4px);left:0;min-width:190px;max-height:260px;overflow-y:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:4px}
 .opt{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border-radius:6px;text-align:left}.opt:hover{background:var(--hover)}
 .opt .ck{margin-left:auto;color:var(--accent)}
-.col.drop{background:var(--soft);border-radius:8px;outline:1px dashed var(--faint)}
+.col.drop,[data-col].drop{background:var(--soft);border-radius:8px;outline:1px dashed var(--faint)}
+.row.dragging{opacity:.45}
 .card.dragging{opacity:.45}
 .chip{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;border:1px solid var(--line)}.chip:hover{background:var(--hover)}.chip.on{background:var(--chip);border-color:transparent}
 .notes h5{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:500}
@@ -224,15 +225,14 @@ function bar() {
   <div class="new"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--faint)" stroke-width="1.5" stroke-linecap="round"><path d="M7 2.5v9M2.5 7h9"/></svg><input id="new" placeholder="New task title, then Enter" maxlength="200" value="${esc(draft)}"><button class="primary" id="add">Create</button></div>`;
 }
 function rowHtml(t) {
-  return `<div class="row ${t.status === "DONE" ? "done" : ""}" data-open="${esc(t.id)}">${priorityIcon(t.priority || 0)}<span class="id">${esc(t.id)}</span>${statusIcon(t.status)}<span class="title">${esc(t.title)}</span>${t.notes.length ? `<span style="color:var(--faint);font-size:11px">${t.notes.length}</span>` : ""}${avatar(t.assignee)}</div>`;
+  return `<div class="row ${t.status === "DONE" ? "done" : ""}" draggable="true" data-drag="${esc(t.id)}" data-open="${esc(t.id)}">${priorityIcon(t.priority || 0)}<span class="id">${esc(t.id)}</span>${statusIcon(t.status)}<span class="title">${esc(t.title)}</span>${t.notes.length ? `<span style="color:var(--faint);font-size:11px">${t.notes.length}</span>` : ""}${avatar(t.assignee)}</div>`;
 }
 function listHtml() {
   const list = visible();
   if (!list.length) return `<div class="empty">No tasks here yet.</div>`;
   return ORDER.map((s) => {
     const g = list.filter((t) => t.status === s);
-    if (!g.length) return "";
-    return `<div class="group">${statusIcon(s)}${STATUS[s].label}<span class="n">${g.length}</span></div>` + g.map(rowHtml).join("");
+    return `<div data-col="${s}"><div class="group">${statusIcon(s)}${STATUS[s].label}<span class="n">${g.length}</span></div>` + g.map(rowHtml).join("") + `</div>`;
   }).join("");
 }
 function boardHtml() {
@@ -291,18 +291,18 @@ function paint() {
     app.querySelector("[data-back]").onclick = () => { openMenu = null; setView({ open: null }); };
     app.querySelectorAll("[data-menu]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); openMenu = openMenu === b.dataset.menu ? null : b.dataset.menu; render(); }));
     app.querySelectorAll(".opt").forEach((o) => o.addEventListener("click", () => { openMenu = null; render(); }));
-    app.querySelectorAll("[data-status]").forEach((b) => (b.onclick = () => b.dataset.status !== t.status && setField(t, "status", b.dataset.status, `moved ${t.id} ${t.title} to ${STATUS[b.dataset.status].label}`)));
+    app.querySelectorAll("[data-status]").forEach((b) => (b.onclick = () => b.dataset.status !== t.status && setField(t, "status", b.dataset.status, `moved ${t.id} to ${STATUS[b.dataset.status].label}`)));
     app.querySelectorAll("[data-priority]").forEach((b) => {
       b.onclick = () => {
         const p = PRIORITY.find((x) => x.v === Number(b.dataset.priority));
-        if (p.v !== (t.priority || 0)) setField(t, "priority", p.v, `set ${t.id} ${t.title} to ${p.label.toLowerCase()} priority`);
+        if (p.v !== (t.priority || 0)) setField(t, "priority", p.v, `set ${t.id} to ${p.label.toLowerCase()} priority`);
       };
     });
     app.querySelectorAll("[data-assign]").forEach((b) => {
       b.onclick = () => {
         const slug = b.dataset.assign || null;
         if (slug === t.assignee) return;
-        setField(t, "assignee", slug, slug ? `assigned ${t.id} ${t.title} to @${slug}` : `unassigned ${t.id} ${t.title}`);
+        setField(t, "assignee", slug, slug ? `assigned ${t.id} to @${slug}` : `unassigned ${t.id}`);
       };
     });
     const title = app.querySelector("#dtitle");
@@ -320,7 +320,7 @@ function paint() {
       bodyEdit.onblur = () => {
         const next = bodyEdit.value.replace(/\s+$/, "");
         editingBody = null;
-        if (next !== (t.body || "")) setField(t, "body", next, next ? `edited the description of ${t.id} ${t.title}` : `cleared the description of ${t.id} ${t.title}`);
+        if (next !== (t.body || "")) setField(t, "body", next, next ? `edited the description of ${t.id}` : `cleared the description of ${t.id}`);
         else render();
       };
     }
@@ -352,7 +352,7 @@ function paint() {
       col.classList.remove("drop");
       const t = snap.state.tasks && snap.state.tasks[e.dataTransfer.getData("text/plain")];
       const s = col.dataset.col;
-      if (t && t.status !== s) setField(t, "status", s, `moved ${t.id} ${t.title} to ${STATUS[s].label}`);
+      if (t && t.status !== s) setField(t, "status", s, `moved ${t.id} to ${STATUS[s].label}`);
     };
   });
   const input = app.querySelector("#new");

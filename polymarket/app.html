@@ -1,0 +1,227 @@
+<style>
+:root{--bg:#fff;--fg:#1b1b1f;--muted:#6b6f76;--faint:#9a9ea6;--line:#ececee;--hover:#f4f4f6;--soft:#f7f7f8;--accent:#5e6ad2;--track:#f1f1f3;--yes:#10b981;--no:#ef4444}
+:root[data-theme=dark]{--bg:#0d0d0f;--fg:#ececee;--muted:#9a9ea6;--faint:#6b6f76;--line:#232327;--hover:#1a1a1e;--soft:#141417;--track:#1c1c20}
+*{box-sizing:border-box}html,body,#app{margin:0;height:100%}
+body{font:13px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+:root[data-surface=banner] body{background:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit;background:transparent;border:0;outline:none}
+#app{display:flex;flex-direction:column}
+.form{display:flex;gap:8px;padding:12px;border-bottom:1px solid var(--line)}
+.field{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px 9px;background:var(--bg)}
+.field input{width:100%}
+.primary{background:var(--accent);color:#fff;border-radius:6px;padding:4px 11px;font-weight:500}.primary:disabled{opacity:.45;cursor:default}
+.scroll{flex:1;overflow-y:auto}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.card{padding:14px;border-bottom:1px solid var(--line)}
+.head{display:flex;align-items:flex-start;gap:8px}
+.head h3{flex:1;margin:0;font-size:14px;font-weight:600;line-height:1.35}
+.icon{color:var(--faint);padding:0 3px;font-size:14px;line-height:18px}.icon:hover{color:var(--fg)}.icon.on{color:#f59e0b}
+.meta{display:flex;flex-wrap:wrap;gap:4px 8px;margin:3px 0 10px;color:var(--faint);font-size:11px}
+.pill{border-radius:999px;padding:0 7px;font-size:10px;font-weight:600;line-height:16px;background:var(--soft);color:var(--muted)}
+.pill.live{background:color-mix(in srgb,var(--yes) 16%,transparent);color:var(--yes)}
+.row{position:relative;display:flex;align-items:center;gap:8px;margin-bottom:5px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.fill{position:absolute;inset:0;width:0;background:color-mix(in srgb,var(--c) 14%,transparent);transition:width .4s}
+.label{position:relative;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.pct{position:relative;font-weight:600;color:var(--c);font-variant-numeric:tabular-nums}
+.foot{color:var(--faint);font-size:11px;margin-top:6px}
+.err{color:var(--no);font-size:12px}
+#flash{position:fixed;left:10px;right:10px;bottom:10px;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 10px;font-size:12px}
+.banner{display:flex;align-items:center;gap:12px;height:100%;padding:0 2px;white-space:nowrap;overflow:hidden;font-size:12px}
+.banner b{font-weight:600;max-width:45%;overflow:hidden;text-overflow:ellipsis}
+.banner .stat{color:var(--muted)}.banner .stat strong{color:var(--fg)}
+</style>
+<div id="app"></div><div id="flash" hidden></div>
+<script>
+const REFRESH_MS = 20000;
+const MAX_ROWS = 6;
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+let ctx = null;
+let snap = { revision: 0, state: { next: 1, markets: {}, pinned: null } };
+let draft = "";
+let adding = false;
+const feeds = {};
+
+const markets = () => Object.values(snap.state.markets || {}).sort((a, b) => b.added_at - a.added_at);
+const nameOf = (slug) => (ctx && ctx.members.find((m) => m.slug === slug) || {}).name || slug;
+const pct = (p) => (p == null ? "–" : p < 0.01 && p > 0 ? "<1%" : p > 0.99 && p < 1 ? ">99%" : Math.round(p * 100) + "%");
+const money = (v) => (v == null ? "" : "$" + (v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "K" : Math.round(v)) + " vol");
+const ends = (d) => (d ? "ends " + new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "");
+
+function rows(feed) {
+  const open = feed.markets.filter((m) => !m.closed);
+  if (feed.markets.length === 1) {
+    const m = feed.markets[0];
+    return m.outcomes.map((o, i) => ({ label: o.name, price: o.price, color: i === 0 ? "var(--yes)" : i === 1 ? "var(--no)" : "var(--accent)" }));
+  }
+  return (open.length ? open : feed.markets)
+    .map((m) => ({ label: m.label, price: m.outcomes[0] ? m.outcomes[0].price : null, color: "var(--accent)" }))
+    .sort((a, b) => (b.price ?? -1) - (a.price ?? -1))
+    .slice(0, MAX_ROWS);
+}
+
+function flash(text) {
+  const el = document.getElementById("flash");
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => (el.hidden = true), 3500);
+}
+
+let queue = Promise.resolve();
+function write(build) {
+  const run = queue.then(async () => {
+    const plan = build();
+    if (!plan) return false;
+    try {
+      const out = await huddo.submit(plan.ops, { expectedRevision: snap.revision, announce: plan.announce });
+      if (out.announced === false && out.announce_error) flash("Saved. " + out.announce_error);
+      return true;
+    } catch (err) {
+      flash(err.code === "REVISION_CONFLICT" ? "Someone changed the list at the same time. Showing the latest." : err.message);
+      snap = await huddo.getState();
+      render();
+      return false;
+    }
+  });
+  queue = run.catch(() => false);
+  return run;
+}
+
+async function load(market) {
+  try {
+    feeds[market] = { data: await huddo.feed("polymarket", { market }), error: null };
+  } catch (err) {
+    feeds[market] = { data: feeds[market] && feeds[market].data, error: err.message };
+  }
+}
+
+async function refresh() {
+  const wanted = ctx.surface === "banner" ? [pinned()].filter(Boolean) : markets();
+  await Promise.all(wanted.map((m) => load(m.market)));
+  render();
+}
+
+function pinned() {
+  const all = markets();
+  return (snap.state.pinned && snap.state.markets[snap.state.pinned]) || all[0] || null;
+}
+
+async function add() {
+  const market = draft.trim();
+  if (!market || adding) return;
+  adding = true;
+  render();
+  let feed = null;
+  try {
+    feed = await huddo.feed("polymarket", { market });
+  } catch (err) {
+    flash(err.code === "NOT_FOUND" ? "No Polymarket market at that link." : err.message);
+  }
+  adding = false;
+  if (!feed) return render();
+  if (markets().some((m) => m.market === feed.slug)) {
+    draft = "";
+    flash("Already on the list.");
+    return render();
+  }
+  feeds[feed.slug] = { data: feed, error: null };
+  const ok = await write(() => {
+    const n = snap.state.next || 1;
+    const id = "M" + n;
+    return {
+      ops: [
+        { op: "test", path: "/next", value: n },
+        { op: "replace", path: "/next", value: n + 1 },
+        { op: "add", path: "/markets/" + id, value: { id, market: feed.slug, title: feed.title, added_by: ctx.self.slug, added_at: Date.now() } },
+        { op: "add", path: "/pinned", value: id },
+      ],
+      announce: "is watching \"" + feed.title + "\" on Polymarket",
+    };
+  });
+  if (ok) draft = "";
+  render();
+}
+
+function remove(id) {
+  const m = snap.state.markets[id];
+  if (!m) return;
+  write(() => ({
+    ops: [{ op: "remove", path: "/markets/" + id }, ...(snap.state.pinned === id ? [{ op: "add", path: "/pinned", value: null }] : [])],
+    announce: "stopped watching \"" + m.title + "\"",
+  }));
+}
+
+function pin(id) {
+  const m = snap.state.markets[id];
+  if (!m || snap.state.pinned === id) return;
+  write(() => ({ ops: [{ op: "add", path: "/pinned", value: id }], announce: "pinned \"" + m.title + "\" to the banner" }));
+}
+
+function card(m) {
+  const f = feeds[m.market];
+  const data = f && f.data;
+  const isPinned = pinned() && pinned().id === m.id;
+  let body = '<div class="foot">Loading odds…</div>';
+  if (data) {
+    body =
+      rows(data).map((r) => `<div class="row" style="--c:${r.color}"><div class="fill" style="width:${Math.round((r.price ?? 0) * 100)}%"></div><span class="label">${esc(r.label)}</span><span class="pct">${pct(r.price)}</span></div>`).join("") +
+      `<div class="foot">${f.error ? `<span class="err">${esc(f.error)}</span> · ` : ""}updated ${new Date(data.fetchedAt).toLocaleTimeString()} · added by ${esc(nameOf(m.added_by))}</div>`;
+  } else if (f && f.error) {
+    body = `<div class="err">${esc(f.error)}</div>`;
+  }
+  const meta = data ? [data.closed ? '<span class="pill">Closed</span>' : '<span class="pill live">Live</span>', esc(money(data.volume)), esc(ends(data.endDate))].filter(Boolean).join(" · ") : "";
+  return `<div class="card"><div class="head"><h3>${esc((data && data.title) || m.title)}</h3>
+    <button class="icon${isPinned ? " on" : ""}" data-pin="${esc(m.id)}" title="${isPinned ? "Shown in the banner" : "Show in the banner"}">★</button>
+    <button class="icon" data-remove="${esc(m.id)}" title="Stop watching">×</button></div>
+    <div class="meta">${meta}</div>${body}</div>`;
+}
+
+function render() {
+  const app = document.getElementById("app");
+  if (ctx.surface === "banner") {
+    const m = pinned();
+    const data = m && feeds[m.market] && feeds[m.market].data;
+    app.innerHTML = !m
+      ? '<div class="banner"><span class="stat">Polymarket: paste a market link in the app</span></div>'
+      : `<div class="banner"><b>${esc((data && data.title) || m.title)}</b>${data ? rows(data).slice(0, 3).map((r) => `<span class="stat">${esc(r.label)} <strong>${pct(r.price)}</strong></span>`).join("") : '<span class="stat">loading…</span>'}</div>`;
+    return;
+  }
+  const focused = document.activeElement && document.activeElement.id === "market";
+  const all = markets();
+  app.innerHTML = `<div class="form" id="add"><label class="field"><input id="market" placeholder="Paste a Polymarket link" value="${esc(draft)}" autocomplete="off"></label>
+    <button class="primary" ${adding || !draft.trim() ? "disabled" : ""}>${adding ? "…" : "Watch"}</button></div>
+    <div class="scroll">${all.length ? all.map(card).join("") : '<div class="empty">Paste a link like polymarket.com/event/… to follow its odds live with the room.</div>'}</div>`;
+  const input = document.getElementById("market");
+  input.oninput = (e) => {
+    draft = e.target.value;
+    document.querySelector("#add .primary").disabled = adding || !draft.trim();
+  };
+  if (focused) {
+    input.focus();
+    input.setSelectionRange(draft.length, draft.length);
+  }
+  input.onkeydown = (e) => {
+    if (e.key === "Enter") add();
+  };
+  document.querySelector("#add .primary").onclick = add;
+  app.querySelectorAll("[data-remove]").forEach((b) => (b.onclick = () => remove(b.dataset.remove)));
+  app.querySelectorAll("[data-pin]").forEach((b) => (b.onclick = () => pin(b.dataset.pin)));
+}
+
+(async () => {
+  ctx = await huddo.ready;
+  snap = await huddo.getState();
+  huddo.onState((s) => {
+    snap = s;
+    render();
+    refresh();
+  });
+  huddo.onContext(render);
+  render();
+  await refresh();
+  setInterval(() => {
+    if (!document.hidden) refresh();
+  }, REFRESH_MS);
+})();
+</script>

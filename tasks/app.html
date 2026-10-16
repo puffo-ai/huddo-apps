@@ -163,9 +163,9 @@ function caughtUp(revision) {
 }
 function write(build) {
   const run = queue.then(async () => {
-    const { ops, announce } = build();
+    const { ops, announce, link } = build();
     try {
-      const out = await huddo.submit(ops, { expectedRevision: snap.revision, announce });
+      const out = await huddo.submit(ops, { expectedRevision: snap.revision, announce, link });
       if (announce && out.announced === false && out.announce_error) flash("Saved. " + out.announce_error);
       await caughtUp(out.revision);
       return true;
@@ -187,16 +187,16 @@ function create(title) {
     const id = "T" + n;
     const now = Date.now();
     const task = { id, title, body: "", status: "TODO", priority: 0, assignee: null, created_by: ctx.self.slug, created_at: now, updated_by: ctx.self.slug, updated_at: now, notes: [] };
-    return { ops: [{ op: "test", path: "/next", value: snap.state.next ?? null }, { op: "add", path: "/next", value: n + 1 }, { op: "add", path: ptr(id), value: task }], announce: `created ${id} ${title}` };
+    return { ops: [{ op: "test", path: "/next", value: snap.state.next ?? null }, { op: "add", path: "/next", value: n + 1 }, { op: "add", path: ptr(id), value: task }], announce: `created ${id} ${title}`, link: id };
   });
 }
 function setField(t, field, value, announce) {
-  return write(() => ({ ops: [{ op: "add", path: ptr(t.id) + "/" + field, value }, ...stamp(t.id)], announce }));
+  return write(() => ({ ops: [{ op: "add", path: ptr(t.id) + "/" + field, value }, ...stamp(t.id)], announce, link: t.id }));
 }
 function addNote(t, text) {
   text = text.trim();
   if (!text) return;
-  return write(() => ({ ops: [{ op: "add", path: ptr(t.id) + "/notes/-", value: { by: ctx.self.slug, at: Date.now(), text } }, ...stamp(t.id)], announce: `commented on ${t.id}: ${text.slice(0, 120)}` }));
+  return write(() => ({ ops: [{ op: "add", path: ptr(t.id) + "/notes/-", value: { by: ctx.self.slug, at: Date.now(), text } }, ...stamp(t.id)], announce: `commented on ${t.id}: ${text.slice(0, 120)}`, link: t.id }));
 }
 const setView = (patch) => {
   view = { ...view, ...patch };
@@ -371,6 +371,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && openMenu
 huddo.ready.then(async (c) => {
   ctx = c;
   huddo.onContext(() => render());
+  if (huddo.onNavigate) huddo.onNavigate((target) => setView({ open: target }));
   huddo.onState((s) => {
     snap = s;
     for (let i = waiters.length - 1; i >= 0; i -= 1) if (waiters[i].revision <= s.revision) waiters.splice(i, 1)[0].resolve();
@@ -379,6 +380,7 @@ huddo.ready.then(async (c) => {
   if (document.documentElement.dataset.surface !== "banner") {
     const saved = await huddo.view.get("v");
     if (saved) view = { ...view, ...saved };
+    if (c.target) view.open = c.target;
   }
   snap = await huddo.getState();
   render();

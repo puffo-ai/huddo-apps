@@ -203,10 +203,12 @@ const setView = (patch) => {
   huddo.view.set("v", { layout: view.layout, filter: view.filter });
   render();
 };
-const visible = () => tasks().filter((t) => view.filter === "all" || (view.filter === "mine" ? t.assignee === ctx.self.slug : t.status !== "DONE"));
+const OLD_DONE_MS = 7 * 24 * 60 * 60 * 1000;
+const current = () => tasks().filter((t) => !(t.status === "DONE" && Date.now() - t.created_at > OLD_DONE_MS));
+const visible = () => current().filter((t) => view.filter === "all" || (view.filter === "mine" ? t.assignee === ctx.self.slug : t.status !== "DONE"));
 
 function renderBanner() {
-  const all = tasks();
+  const all = current();
   const count = (s) => all.filter((t) => t.status === s).length;
   const mine = all.filter((t) => t.assignee === ctx.self.slug && t.status !== "DONE").length;
   document.getElementById("app").innerHTML =

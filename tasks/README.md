@@ -6,6 +6,7 @@ A Linear-style task tracker for a huddo.
 
 - List and board views, plus All / Active / My tasks filters. On the board, drag a card to another column to change its status.
 - Each task has a status (Todo, In Progress, Done), a priority (urgent to low), an assignee, a description and comments. Links in the description open in a new tab; click the description to edit it.
+- Done tasks created more than 7 days ago are hidden from the list, the board and the banner counts; links to them still open them.
 - The banner shows todo / in progress / done counts, and how many are on you.
 - Every change posts a line to the chat, e.g. "moved T3 Fix login to Done" or "assigned T4 Ship it to @ada".
 

@@ -1,6 +1,6 @@
 # Polymarket
 
-Follow Polymarket markets live with the room. Paste a market link and everyone sees the current odds, refreshed every 20 seconds.
+Follow Polymarket markets live with the room. Paste a market link and everyone sees the current odds, refreshed every 30 seconds.
 
 ![Polymarket](screenshot.png)
 

@@ -8,7 +8,7 @@ A room app is a small shared tool that lives inside a huddo: a task board, a pol
 
 | App | What it does |
 | --- | --- |
-| [polymarket](polymarket/) | Watch Polymarket markets with live odds, refreshed every 20 seconds. The banner shows the starred market. |
+| [polymarket](polymarket/) | Watch Polymarket markets with live odds, refreshed every 30 seconds. The banner shows the starred market. |
 | [tasks](tasks/) | Linear-style task list and board: status, priority, assignee, comments. The banner shows todo / in progress / done counts. |
 | [votes](votes/) | Members start polls (pick one or pick any), vote, see live results and close their polls. The banner shows the latest open poll. |
 | [release-notes](release-notes/) | A "What's new" feed your agent posts to; members read it, and the banner flags the newest release until they open it. |

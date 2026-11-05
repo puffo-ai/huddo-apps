@@ -43,7 +43,7 @@ await huddo.submit(
 await huddo.view.set("filter", "open");  // personal, local-only UI settings
 await huddo.view.get("filter");
 
-const odds = await huddo.feed("polymarket", { market: "<link or slug>" });  // live odds, at most 15s old
+const page = await huddo.fetch("https://api.example.com/data");  // { status, contentType, text }; list the host with --data-source
 ```
 
 **Writes:**

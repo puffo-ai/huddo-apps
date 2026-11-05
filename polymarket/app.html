@@ -33,7 +33,7 @@ input{font:inherit;color:inherit;background:transparent;border:0;outline:none}
 </style>
 <div id="app"></div><div id="flash" hidden></div>
 <script>
-const REFRESH_MS = 20000;
+const REFRESH_MS = 30000;
 const MAX_ROWS = 6;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 let ctx = null;
@@ -88,9 +88,84 @@ function write(build) {
   return run;
 }
 
+const GAMMA = "https://gamma-api.polymarket.com";
+const MAX_MARKETS = 12;
+
+function marketSlug(input) {
+  const raw = String(input).trim();
+  let path = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      if (!/(^|\.)polymarket\.com$/i.test(url.hostname)) return null;
+      path = url.pathname;
+    } catch {
+      return null;
+    }
+  }
+  const parts = path.split("/").filter(Boolean);
+  const at = parts.findIndex((p) => p === "event" || p === "market");
+  const slug = at >= 0 ? parts[parts.length - 1] : parts.length === 1 ? parts[0] : undefined;
+  return slug && /^[a-z0-9-]{1,200}$/i.test(slug) ? slug.toLowerCase() : null;
+}
+
+const textList = (value) => {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+};
+
+const numberOf = (value) => {
+  const n = value == null ? NaN : Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+async function gamma(path) {
+  const resp = await huddo.fetch(`${GAMMA}${path}`);
+  if (resp.status !== 200) throw new Error(`Polymarket answered ${resp.status}`);
+  return JSON.parse(resp.text);
+}
+
+async function loadOdds(input) {
+  const slug = marketSlug(input);
+  if (!slug) throw new Error("Paste a Polymarket link or slug.");
+  let event = (await gamma(`/events?slug=${encodeURIComponent(slug)}`))[0];
+  if (!event) {
+    const market = (await gamma(`/markets?slug=${encodeURIComponent(slug)}`))[0];
+    if (!market) throw Object.assign(new Error("no market"), { code: "NOT_FOUND" });
+    event = { slug: market.slug, title: market.question, endDate: market.endDate, volume: market.volume, closed: market.closed, markets: [market] };
+  }
+  const markets = (event.markets || [])
+    .filter((m) => m.active !== false)
+    .sort((a, b) => Number(Boolean(a.closed)) - Number(Boolean(b.closed)))
+    .slice(0, MAX_MARKETS);
+  return {
+    slug: event.slug || slug,
+    title: event.title || "",
+    url: `https://polymarket.com/event/${event.slug || slug}`,
+    endDate: event.endDate || null,
+    volume: numberOf(event.volume),
+    closed: Boolean(event.closed),
+    markets: markets.map((m) => {
+      const prices = textList(m.outcomePrices);
+      return {
+        question: m.question || "",
+        label: m.groupItemTitle || m.question || "",
+        outcomes: textList(m.outcomes).map((name, i) => ({ name, price: numberOf(prices[i]) })),
+        volume: numberOf(m.volume),
+        closed: Boolean(m.closed),
+      };
+    }),
+    fetchedAt: Date.now(),
+  };
+}
+
 async function load(market) {
   try {
-    feeds[market] = { data: await huddo.feed("polymarket", { market }), error: null };
+    feeds[market] = { data: await loadOdds(market), error: null };
   } catch (err) {
     feeds[market] = { data: feeds[market] && feeds[market].data, error: err.message };
   }
@@ -114,7 +189,7 @@ async function add() {
   render();
   let feed = null;
   try {
-    feed = await huddo.feed("polymarket", { market });
+    feed = await loadOdds(market);
   } catch (err) {
     flash(err.code === "NOT_FOUND" ? "No Polymarket market at that link." : err.message);
   }

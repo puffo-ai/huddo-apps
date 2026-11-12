@@ -48,7 +48,7 @@ await huddo.view.get("filter");
 - If someone else changed the state first, the error code is `REVISION_CONFLICT`: read the state again and retry.
 - Other error codes: `TEST_FAILED`, `PATCH_FAILED`, `QUOTA_EXCEEDED`, `READ_ONLY`, `APP_DISABLED`, `VERSION_MISMATCH`, `RATE_LIMITED` (at most 5 writes per second per member).
 
-**Chat lines:** every saved change posts a line to the chat as the user, marked "via <app name>": the `announce` text, or "updated <app name>" if you leave it out.
+**Chat lines:** a saved change posts a line to the chat as the user, marked "via <app name>", only when you give `announce` text. Without `announce`, the change is saved and nothing is posted. Give `announce` for each change that the room must know about, and say what changed, for example "checked Buy pie".
 
 **Styling:**
 - `<html>` carries `data-theme` and `data-surface`, so CSS can use `:root[data-theme=dark]` and `:root[data-surface=banner]`.

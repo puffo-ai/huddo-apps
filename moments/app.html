@@ -1,0 +1,208 @@
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--fg:#17181a;--muted:#6d7178;--line:#e6e4df;--accent:#e2465c;--chip:#f1efea}
+[data-theme=dark]{--bg:#131416;--card:#1c1e21;--fg:#eceef0;--muted:#9ba0a7;--line:#2c2f34;--accent:#ff6b81;--chip:#25282c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:640px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:14px}
+h1{margin:0;font-size:22px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.card{background:var(--card);border-radius:14px;box-shadow:0 0 0 1px var(--line);padding:14px 16px}
+textarea{width:100%;min-height:64px;resize:vertical;border:0;outline:0;background:transparent;color:var(--fg);font:inherit}
+.row{display:flex;align-items:center;gap:8px}
+.grow{flex:1}
+button{font:inherit;border:0;cursor:pointer;border-radius:999px;padding:5px 12px;background:var(--chip);color:var(--fg)}
+button.primary{background:var(--fg);color:var(--card);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+.picks{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.picks img{width:56px;height:56px;object-fit:cover;border-radius:8px}
+.who{display:flex;align-items:center;gap:10px}
+.av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;flex:none}
+.name{font-weight:600}
+.tag{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--chip);color:var(--muted);margin-left:6px}
+.time{color:var(--muted);font-size:12px}
+.text{margin:10px 0 0;white-space:pre-wrap;word-break:break-word}
+.grid{display:grid;gap:4px;margin-top:10px}
+.grid.n1{grid-template-columns:1fr}.grid.n2,.grid.n4{grid-template-columns:1fr 1fr}.grid.n3,.grid.n5,.grid.n6,.grid.n7,.grid.n8,.grid.n9{grid-template-columns:1fr 1fr 1fr}
+.grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;background:var(--chip);display:block}
+.grid.n1 img{aspect-ratio:auto;max-height:360px}
+.acts{display:flex;gap:6px;margin-top:10px}
+.acts button.on{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.comments{margin-top:10px;padding:8px 10px;border-radius:10px;background:var(--chip);display:flex;flex-direction:column;gap:4px}
+.comments b{font-weight:600}
+.reply{display:flex;gap:6px;margin-top:8px}
+.reply input{flex:1;border:0;border-radius:999px;padding:6px 12px;background:var(--chip);color:var(--fg);font:inherit;outline:0}
+.empty{color:var(--muted);text-align:center;padding:30px 0}
+button.link{background:none;padding:0;color:var(--muted);font-size:13px;align-self:flex-start}
+button.link:hover{color:var(--fg)}
+.more{display:block;margin:4px auto 0}
+.more[hidden]{display:none}
+.card{transition:box-shadow .3s}
+.card.hit{box-shadow:0 0 0 2px var(--accent),0 0 0 6px color-mix(in srgb,var(--accent) 20%,transparent)}
+.err{color:var(--accent);font-size:12px}
+</style>
+<div class="wrap">
+  <div>
+    <h1>Moments</h1>
+    <div class="sub">Share a moment with the room. Every post also shows in the chat.</div>
+  </div>
+  <div class="card" id="compose">
+    <textarea id="text" placeholder="What's happening?"></textarea>
+    <div class="picks" id="picks"></div>
+    <div class="row">
+      <label><button type="button" id="add">+ Photos</button><input type="file" id="file" accept="image/*" multiple hidden></label>
+      <span class="grow err" id="err"></span>
+      <button class="primary" id="post">Post</button>
+    </div>
+  </div>
+  <div id="feed"><div class="empty">Loading…</div></div>
+</div>
+<script>
+const COLORS = ["#7c5cff", "#e2465c", "#1fa37a", "#f08c2e", "#2f80ed", "#c04fd6"];
+const color = (s) => COLORS[[...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % COLORS.length];
+const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); for (const k of kids) if (k != null) e.append(k); return e; };
+const ago = (t) => { const s = (Date.now() - t) / 1000; if (s < 60) return "just now"; if (s < 3600) return Math.floor(s / 60) + " min ago"; if (s < 86400) return Math.floor(s / 3600) + " h ago"; return new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
+
+// Pictures load when they scroll near the screen, and once per session.
+const urls = new Map();
+const pending = new Map();
+const show = (img) => {
+  const id = img.dataset.blob;
+  if (urls.has(id)) { img.src = urls.get(id); return; }
+  if (!pending.has(id)) pending.set(id, huddo.posts.file(id).then((blob) => { const u = URL.createObjectURL(blob); urls.set(id, u); return u; }));
+  pending.get(id).then((u) => { img.src = u; }, () => pending.delete(id));
+};
+const near = new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) { near.unobserve(e.target); show(e.target); }
+}, { rootMargin: "600px 0px" });
+const image = (f) => {
+  const img = el("img", { alt: f.name });
+  img.dataset.blob = f.thumbBlobId || f.blobId;
+  if (urls.has(img.dataset.blob)) img.src = urls.get(img.dataset.blob);
+  else near.observe(img);
+  return img;
+};
+
+let picked = [];
+const picks = document.getElementById("picks"), err = document.getElementById("err");
+document.getElementById("add").onclick = () => document.getElementById("file").click();
+document.getElementById("file").onchange = (e) => {
+  picked = [...picked, ...e.target.files].slice(0, 9);
+  picks.replaceChildren(...picked.map((f) => el("img", { src: URL.createObjectURL(f) })));
+  e.target.value = "";
+};
+document.getElementById("post").onclick = async (e) => {
+  const text = document.getElementById("text").value.trim();
+  if (!text && !picked.length) return;
+  e.target.disabled = true; err.textContent = "";
+  try {
+    await huddo.posts.post(text, { files: picked });
+    document.getElementById("text").value = ""; picked = []; picks.replaceChildren();
+  } catch (x) { err.textContent = x.message; }
+  e.target.disabled = false;
+};
+
+// All comments of a post once someone asks for them: oldest first, with the cursor for the earlier ones.
+const opened = new Map();
+const loadComments = async (post, earlier) => {
+  const cur = opened.get(post.id);
+  const page = await huddo.posts.replies(post.id, { limit: 50, before: earlier && cur ? cur.next : undefined });
+  const items = page.items.slice().reverse();
+  opened.set(post.id, { items: earlier && cur ? [...items, ...cur.items] : items, next: page.hasMore ? page.next : null, count: post.replyCount });
+  render(latest);
+};
+
+const comment = (r) => el("div", {}, el("b", { textContent: r.sender.name + ": " }), r.text);
+const card = (n) => {
+  const like = n.reactions.find((r) => r.emoji === "❤️");
+  const likeBtn = el("button", { className: like && like.mine ? "on" : "", textContent: "❤️ " + (like ? like.count : "Like") });
+  likeBtn.onclick = () => huddo.posts.react(n.id, "❤️");
+  const chat = el("button", { textContent: "💬 " + (n.replyCount || "Comment") });
+  const open = el("button", { textContent: "Open in chat" });
+  open.onclick = () => huddo.posts.open(n.id);
+  const input = el("input", { placeholder: "Write a comment…" });
+  chat.onclick = () => input.focus();
+  const send = el("button", { textContent: "Send" });
+  send.onclick = async () => {
+    const t = input.value.trim();
+    if (!t) return;
+    input.value = "";
+    try { await huddo.posts.reply(n.id, t); } catch (x) { input.value = t; input.placeholder = x.message; }
+  };
+  input.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) send.click(); };
+  const others = n.reactions.filter((r) => r.emoji !== "❤️").map((r) => r.emoji + " " + r.count).join("  ");
+
+  const all = opened.get(n.id);
+  if (all && all.count !== n.replyCount) loadComments(n, false);
+  const shown = all ? all.items : n.replies;
+  const comments = [];
+  if (all && all.next) {
+    const earlier = el("button", { className: "link", textContent: "View earlier comments" });
+    earlier.onclick = () => loadComments(n, true);
+    comments.push(earlier);
+  } else if (!all && n.replyCount > n.replies.length) {
+    const every = el("button", { className: "link", textContent: "View all " + n.replyCount + " comments" });
+    every.onclick = () => loadComments(n, false);
+    comments.push(every);
+  }
+  comments.push(...shown.map(comment));
+
+  const box = el("div", { className: n.id === wanted ? "card hit" : "card" },
+    el("div", { className: "who" },
+      el("div", { className: "av", textContent: n.sender.name.charAt(0).toUpperCase(), style: "background:" + color(n.sender.slug) }),
+      el("div", {}, el("div", {}, el("span", { className: "name", textContent: n.sender.name }), n.sender.agent ? el("span", { className: "tag", textContent: "agent" }) : null), el("div", { className: "time", textContent: ago(n.sentAt) }))),
+    n.text ? el("p", { className: "text", textContent: n.text }) : null,
+    n.files.length ? el("div", { className: "grid n" + n.files.length }, ...n.files.map(image)) : null,
+    el("div", { className: "acts" }, likeBtn, chat, others ? el("button", { textContent: others, disabled: true }) : null, el("span", { className: "grow" }), open),
+    comments.length ? el("div", { className: "comments" }, ...comments) : null,
+    el("div", { className: "reply" }, input, send));
+  box.dataset.id = n.id;
+  return box;
+};
+
+// A post opened from the chat: page back until it is loaded, then show it.
+let wanted = null;
+let seeking = false;
+const reveal = async (target) => {
+  wanted = target;
+  const find = () => target && document.querySelector('.card[data-id="' + CSS.escape(target) + '"]');
+  for (let tries = 0; !find() && latest.hasMore && tries < 10 && !seeking; tries++) {
+    seeking = true;
+    try { render(await huddo.posts.more()); } finally { seeking = false; }
+  }
+  const box = find();
+  if (!box) return;
+  for (const c of document.querySelectorAll(".card.hit")) c.classList.remove("hit");
+  box.classList.add("hit");
+  box.scrollIntoView({ block: "center", behavior: "smooth" });
+  setTimeout(() => { box.classList.remove("hit"); if (wanted === target) wanted = null; }, 2400);
+};
+huddo.onNavigate(reveal);
+huddo.ready.then((ctx) => { if (ctx.target) wanted = ctx.target; });
+
+let latest = { items: [], hasMore: false };
+let loadingMore = false;
+const more = el("button", { className: "more", textContent: "Load more" });
+more.onclick = async () => {
+  if (loadingMore) return;
+  loadingMore = true; more.disabled = true; more.textContent = "Loading…";
+  try { render(await huddo.posts.more()); } finally { loadingMore = false; more.disabled = false; more.textContent = "Load more"; }
+};
+new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting) && latest.hasMore) more.click(); }, { rootMargin: "400px 0px" }).observe(more);
+
+const render = (snapshot) => {
+  latest = snapshot;
+  const feed = document.getElementById("feed");
+  const drafts = new Map();
+  for (const i of feed.querySelectorAll(".reply input")) if (i.value) drafts.set(i.closest(".card").dataset.id, i.value);
+  const active = document.activeElement && feed.contains(document.activeElement) && document.activeElement.tagName === "INPUT" ? document.activeElement.closest(".card").dataset.id : null;
+  const cards = snapshot.items.length ? snapshot.items.map(card) : [el("div", { className: "empty", textContent: "No moments yet. Post the first one." })];
+  feed.replaceChildren(...cards);
+  more.hidden = !snapshot.hasMore;
+  feed.after(more);
+  for (const [id, value] of drafts) { const i = feed.querySelector('.card[data-id="' + CSS.escape(id) + '"] .reply input'); if (i) i.value = value; }
+  if (active) { const i = feed.querySelector('.card[data-id="' + CSS.escape(active) + '"] .reply input'); if (i) i.focus(); }
+  if (wanted && !seeking) reveal(wanted);
+};
+huddo.onPosts(render);
+huddo.posts.list().then(render).catch((x) => { document.getElementById("feed").replaceChildren(el("div", { className: "empty", textContent: x.message })); });
+</script>

@@ -10,6 +10,7 @@ A room app is a small shared tool that lives inside a huddo: a task board, a pol
 | --- | --- |
 | [tasks](tasks/) | Linear-style task list and board: status, priority, assignee, comments. The banner shows todo / in progress / done counts. |
 | [votes](votes/) | Members start polls (pick one or pick any), vote, see live results and close their polls. The banner shows the latest open poll. |
+| [moments](moments/) | A room home feed: members post text and photos, like and comment. Each post is a chat message, so it needs no shared state. |
 | [release-notes](release-notes/) | A "What's new" feed your agent posts to; members read it, and the banner flags the newest release until they open it. |
 
 ## How an app works
@@ -49,6 +50,27 @@ await huddo.view.get("filter");
 - Other error codes: `TEST_FAILED`, `PATCH_FAILED`, `QUOTA_EXCEEDED`, `READ_ONLY`, `APP_DISABLED`, `VERSION_MISMATCH`, `RATE_LIMITED` (at most 5 writes per second per member).
 
 **Chat lines:** every saved change posts a line to the chat as the user, marked "via <app name>": the `announce` text, or "updated <app name>" if you leave it out.
+
+**Posts (room home only):** an app can also post chat messages and read its own posts. A post is a chat message marked "via <app name>". Likes are reactions and comments are replies, so the chat and the app show the same thing. Posts use no shared state.
+
+```js
+const { items, hasMore } = await huddo.posts.list();  // the newest 20, newest first
+await huddo.posts.more();                              // 20 older posts; onPosts gets the longer list
+huddo.onPosts(({ items, hasMore }) => render(items));  // new posts, likes and replies
+// item: { id, sender: {slug, name, agent}, sentAt, text, mine,
+//         files: [{blobId, name, mime, thumbBlobId?, width?, height?}],
+//         reactions: [{emoji, count, mine}], replyCount, replies: [the latest 3] }
+
+await huddo.posts.post("Lunch", { files: [file] });    // up to 2000 characters and 9 files
+huddo.onNavigate((target) => reveal(target));          // "via <app name>" in the chat sends the post id, or the post's `link`
+await huddo.posts.react(id, "❤️");                     // a second time removes it
+await huddo.posts.reply(id, "Looks great");            // a comment
+const page = await huddo.posts.replies(id, { before, limit });  // { items, hasMore, next }
+huddo.posts.open(id);                                  // show the post in the chat
+const blob = await huddo.posts.file(blobId);           // a decrypted file or thumbnail of a post
+```
+
+Error codes: `NOT_FOUND` (not one of this app's posts), `BAD_REQUEST`, `SEND_FAILED`, `LOAD_FAILED`, `FILE_FAILED`.
 
 **Styling:**
 - `<html>` carries `data-theme` and `data-surface`, so CSS can use `:root[data-theme=dark]` and `:root[data-surface=banner]`.
